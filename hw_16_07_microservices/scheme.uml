@@ -1,0 +1,84 @@
+@startuml
+!theme plain
+top to bottom direction
+
+skinparam {
+  BackgroundColor White
+  ArrowColor #2F4F4F
+  ActorBorderColor #2F4F4F
+  ComponentBackgroundColor #F0F8FF
+  ComponentBorderColor #1E90FF
+  DatabaseBackgroundColor #E6E6FA
+  DatabaseBorderColor #9370DB
+  QueueBackgroundColor #FFE4E1
+  QueueBorderColor #FF6347
+}
+
+actor "Пользователь" as user
+actor "Курьер" as courier
+actor "Администратор" as admin
+
+rectangle "Цифровая библиотека" {
+  [API Gateway] as gateway
+  database "PostgreSQL\n(User DB)" as user_db
+  database "PostgreSQL\n(Loan DB)" as loan_db
+  database "PostgreSQL + Elasticsearch\n(Book DB)" as book_db
+  database "MongoDB\n(Notification DB)" as notif_db
+  database "PostgreSQL\n(Delivery DB)" as delivery_db
+  database "PostgreSQL\n(Payment DB)" as payment_db
+  database "PostgreSQL\n(Order DB)" as order_db
+
+  [User Service] as user_svc
+  [Loan Management\nService] as loan_svc
+  [Book Catalog\nService] as book_svc
+  [Notification\nService] as notif_svc
+  [Delivery\nService] as delivery_svc
+  [Payment\nService] as payment_svc
+  [Order\nService] as order_svc
+
+  queue "RabbitMQ" as rabbit
+  queue "Kafka" as kafka
+
+  user --> gateway : Мобильное приложение\n/ Веб-портал
+  courier --> gateway
+  admin --> gateway
+
+  gateway --> user_svc : REST (HTTPS)
+  gateway --> book_svc : gRPC
+  gateway --> order_svc : REST (HTTPS)
+  gateway --> payment_svc : REST (HTTPS)
+
+  user_svc --> user_db
+  book_svc --> book_db
+  loan_svc --> loan_db
+  notif_svc --> notif_db
+  delivery_svc --> delivery_db
+  payment_svc --> payment_db
+  order_svc --> order_db
+
+  loan_svc --> rabbit : События просрочки
+  rabbit --> notif_svc : Триггер уведомлений
+
+  order_svc --> kafka : Создание заказа
+  kafka --> book_svc : Резервирование книги
+  kafka --> delivery_svc : Инициирование доставки
+
+  delivery_svc --> payment_svc : REST (Платеж за доставку)
+  delivery_svc --> rabbit : Статус доставки
+  rabbit --> notif_svc : Уведомление пользователя
+
+  loan_svc --> payment_svc : REST (Штрафы)
+  payment_svc --> notif_svc : REST (Отправка чека)
+}
+
+cloud "Внешние сервисы" {
+  [Payment Gateways] as pgw
+  [Email/SMS API] as email
+  [Maps API] as maps
+
+  payment_svc --> pgw
+  notif_svc --> email
+  delivery_svc --> maps
+}
+
+@enduml
